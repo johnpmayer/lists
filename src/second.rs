@@ -117,9 +117,10 @@ fn into_iter() {
 }
 
 // Iter: iterator when we only have a borrow reference to the list
+// We have a SHARED REFERENCE to the iterator
+// We can call the iterator many times, and the lifetime of the values we get is totally separate
 
 // the lifetime of the iterator is the lifetime of the node it might hold
-// Also need to say the inner type has the same lifetime?
 pub struct Iter<'a, T: 'a> {
     next: Option<&'a Node<T>>,
 }
@@ -158,4 +159,43 @@ fn iter() {
     assert_eq!(iter.next(), Some(&3));
     assert_eq!(iter.next(), Some(&2));
     assert_eq!(iter.next(), Some(&1));
+}
+
+// IterMut - when we have an exclusive (mutable) reference
+
+pub struct IterMut<'a, T: 'a> {
+    next: Option<&'a mut Node<T>>,
+}
+
+impl<T> List<T> {
+    // Nice! I caught this myself!
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut { next: self.head.as_mut().map(|node| &mut **node) }
+    }
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // &mut is not Copy (two exclusive ref to same memory)
+        // So (in the ::Some case) we can't move the node
+        // That would leave an 'uninitialized' Some(??)
+        // Need to take() it safely
+        self.next.take().map(|node| {
+            self.next = node.next.as_mut().map(|node| &mut **node);
+            &mut node.elem
+        })
+    }
+}
+
+#[test]
+fn iter_mut() {
+    let mut list = List::new();
+    list.push(1); list.push(2); list.push(3);
+
+    let mut iter = list.iter_mut();
+    assert_eq!(iter.next(), Some(&mut 3));
+    assert_eq!(iter.next(), Some(&mut 2));
+    assert_eq!(iter.next(), Some(&mut 1));
 }
